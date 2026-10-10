@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+node_modules/
+solar_monitor/frontend/node_modules/
+# build output is produced by setup.bat / npm run build
+solar_monitor/frontend/dist/
+# trained model artifacts are dropped in locally (see solar_monitor/backend/models/README.md)
+solar_monitor/backend/models/*.joblib
+.claude/
