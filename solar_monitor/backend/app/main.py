@@ -3,10 +3,12 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -28,6 +30,11 @@ def create_app(engine: SimulationEngine | None = None) -> FastAPI:
             await eng.stop()
 
     app = FastAPI(title="Solar Panel Monitoring - Simulation", lifespan=lifespan)
+
+    # Only needed when the frontend is hosted on another origin (e.g. Vercel). Comma-separated list, empty = off.
+    origins = [o.strip().rstrip("/") for o in os.environ.get("CORS_ORIGINS", "").split(",") if o.strip()]
+    if origins:
+        app.add_middleware(CORSMiddleware, allow_origins=origins, allow_methods=["*"], allow_headers=["*"])
 
     def eng() -> SimulationEngine:
         return app.state.engine

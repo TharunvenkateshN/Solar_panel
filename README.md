@@ -94,6 +94,19 @@ memory), so open the URL a few minutes before a demo. A public site cannot reach
 **local simulation mode** (`MQTT_ENABLED=0`) with the simulated classifier. The API has no login: anyone with the link can change scenarios.
 The container reads `HOST` / `PORT` (`run.py` defaults to `127.0.0.1:8000`, so local use is unchanged).
 
+### Optional: frontend on Vercel, backend on Render
+
+Render alone already serves the whole app. To put the **frontend on Vercel** instead (the backend must stay on Render - Vercel cannot host the long-running WebSocket simulation):
+
+1. Deploy the backend on Render first (above) and note its URL, e.g. `https://solar-panel-monitor.onrender.com`.
+2. On [vercel.com](https://vercel.com): **Add New -> Project**, import `Solar_panel`.
+3. **Root Directory:** `solar_monitor/frontend`. Framework preset **Vite**, build command `npm run build`, output directory `dist`.
+4. **Environment Variables:** `VITE_BACKEND_URL` = the Render URL (no trailing slash). Click **Deploy** and note the Vercel URL, e.g. `https://solar-panel.vercel.app`.
+5. In the Render dashboard open the service -> **Environment** and add `CORS_ORIGINS` = the Vercel URL (comma-separate several origins). Render redeploys.
+6. Open the Vercel URL: the header chips fill in and the 3D view updates. If it says "Connecting to the simulation backend", wait 30-60 s (free-tier cold start).
+
+`VITE_BACKEND_URL` is baked in at build time; change it and redeploy Vercel. Locally and on Render it stays empty (same origin) and CORS stays off.
+
 ## Repository layout
 
 | Path | Content |

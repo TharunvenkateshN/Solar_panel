@@ -1,5 +1,9 @@
+// Empty (default) = same origin as the page (local run / Render). Set VITE_BACKEND_URL when the frontend is
+// hosted separately (e.g. Vercel) and the backend lives elsewhere (e.g. Render).
+export const BACKEND = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/+$/, '')
+
 async function call(method, url, body) {
-  const res = await fetch(url, {
+  const res = await fetch(BACKEND + url, {
     method,
     headers: body ? { 'Content-Type': 'application/json' } : undefined,
     body: body ? JSON.stringify(body) : undefined,

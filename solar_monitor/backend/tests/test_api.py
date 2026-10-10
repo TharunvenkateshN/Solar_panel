@@ -116,3 +116,23 @@ def test_event_endpoint_and_catalog(client):
     client.put("/api/config", json={"auto_execute": False, "cleaning_duration_s": 2})
     assert client.post("/api/event/clean").status_code == 200
     assert client.post("/api/event/tilt", json={"params": {"angle": 100}}).status_code == 409
+
+
+def test_cors_is_off_by_default_and_allows_only_configured_origins(tmp_path, monkeypatch):
+    def make():
+        cfg = SimConfig(); cfg.update({**FAST, "tick_interval_s": 30})
+        return TestClient(create_app(SimulationEngine(config=cfg, models_dir=tmp_path)))
+
+    monkeypatch.delenv("CORS_ORIGINS", raising=False)
+    with make() as c:
+        r = c.get("/api/health", headers={"Origin": "https://app.vercel.app"})
+        assert "access-control-allow-origin" not in r.headers
+
+    monkeypatch.setenv("CORS_ORIGINS", "https://app.vercel.app/, https://other.example")
+    with make() as c:
+        ok = c.get("/api/health", headers={"Origin": "https://app.vercel.app"})
+        assert ok.headers["access-control-allow-origin"] == "https://app.vercel.app"
+        bad = c.get("/api/health", headers={"Origin": "https://evil.example"})
+        assert "access-control-allow-origin" not in bad.headers
+        pre = c.options("/api/scenario/soiled", headers={"Origin": "https://app.vercel.app", "Access-Control-Request-Method": "POST"})
+        assert pre.status_code == 200 and "POST" in pre.headers["access-control-allow-methods"]

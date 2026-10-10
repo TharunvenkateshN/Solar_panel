@@ -1,4 +1,5 @@
 import { useEffect, useReducer } from 'react'
+import { BACKEND } from './api.js'
 
 const initial = {
   connected: false, loaded: false, scenarios: [], scenarioId: 'healthy', scenarioLabel: '',
@@ -41,8 +42,10 @@ export function useSim() {
   useEffect(() => {
     let ws, timer, closed = false
     const connect = () => {
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      ws = new WebSocket(`${proto}://${location.host}/ws`)
+      const url = BACKEND
+        ? `${BACKEND.replace(/^http/, 'ws')}/ws`
+        : `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`
+      ws = new WebSocket(url)
       ws.onopen = () => dispatch({ type: 'conn', v: true })
       ws.onmessage = (e) => dispatch({ type: 'msg', m: JSON.parse(e.data) })
       ws.onclose = () => {
