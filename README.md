@@ -14,6 +14,8 @@ Virtual sensors -> feature preparation -> ML classification -> hotspot detection
    -> expected-performance comparison -> decision engine -> corrective action -> post-action verification
 ```
 
+**Live demo:** https://solar-panel-monitor.onrender.com (Render free tier - the first load after idle takes 30-60 s; runs in local simulation mode with the simulated classifier).
+
 ## Screenshots
 
 **Overview** - status banner, live 3D panel, suggested actions, pipeline and events. A hotspot alert never erases the ML class.
