@@ -1,0 +1,8 @@
+# Runtime-only dependencies used by the Docker image (no test tools, no scikit-learn).
+# Add scikit-learn / xgboost here only if you deploy a trained .joblib model.
+fastapi>=0.110
+uvicorn>=0.29
+websockets>=12
+paho-mqtt>=2.0
+numpy>=1.26
+joblib>=1.3

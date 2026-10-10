@@ -80,6 +80,20 @@ Copy `solar_panel_condition_model.joblib`, `model_metadata.json` and `feature_sc
 `solar_monitor/backend/models/`, install the scikit-learn version used for training (`pip install scikit-learn==1.6.1`), then press
 **Reload model** in *Settings* (or restart). No code changes. Details: [`solar_monitor/backend/models/README.md`](solar_monitor/backend/models/README.md).
 
+## Live deployment (Render, free tier)
+
+The repo includes a `Dockerfile` and `render.yaml`. One service runs the whole app (API, WebSocket and the built frontend) on a single URL.
+
+1. Sign in at [render.com](https://render.com) with GitHub and authorise the `Solar_panel` repository.
+2. **New +** -> **Blueprint** -> select the repo. Render reads `render.yaml` (Docker, free plan, health check `/api/health`).
+3. Click **Apply** and wait for the build (about 5-8 minutes the first time). The URL looks like `https://solar-panel-monitor.onrender.com`.
+4. Later pushes to `main` redeploy automatically.
+
+Notes: the free tier sleeps after ~15 minutes idle (the first request then takes 30-60 s and the simulation restarts, since state is in
+memory), so open the URL a few minutes before a demo. A public site cannot reach a broker on your laptop, so it runs in the labelled
+**local simulation mode** (`MQTT_ENABLED=0`) with the simulated classifier. The API has no login: anyone with the link can change scenarios.
+The container reads `HOST` / `PORT` (`run.py` defaults to `127.0.0.1:8000`, so local use is unchanged).
+
 ## Repository layout
 
 | Path | Content |
@@ -87,6 +101,7 @@ Copy `solar_panel_condition_model.joblib`, `model_metadata.json` and `feature_sc
 | `solar_monitor/backend/` | FastAPI app: sensors, hotspot detector, digital twin, decision engine, actuators, MQTT, classifier adapter, events, 129 tests |
 | `solar_monitor/frontend/` | React + Vite + Recharts + three.js dashboard |
 | `solar_monitor/mosquitto/` | Local broker configuration |
+| `Dockerfile`, `render.yaml` | Live deployment on Render |
 | `solar_panel_ai_completed.ipynb` | The original notebook the core logic was ported from |
 | `docs/screenshots/` | Images used in this README |
 

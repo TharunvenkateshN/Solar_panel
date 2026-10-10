@@ -1,0 +1,12 @@
+# Render Blueprint: one free web service built from the Dockerfile.
+services:
+  - type: web
+    name: solar-panel-monitor
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: MQTT_ENABLED   # no public broker: the app runs in its labelled local simulation mode
+        value: "0"
