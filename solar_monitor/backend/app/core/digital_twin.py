@@ -19,6 +19,47 @@ def pv_expected_power(irradiance_wm2: float, temperature_c: float, cfg: SimConfi
     return max(0.0, round(p, 4))
 
 
+HEALTH_WEIGHTS = {"performance": 1.0, "performance_cap": 60.0,
+                  "hotspot_base": 20.0, "hotspot_per_deg": 1.0, "hotspot_cap": 40.0,
+                  "shading_per_cool_fraction": 30.0, "shading_cap": 15.0, "soiling_flag": 5.0}
+HEALTH_HEALTHY_MIN, HEALTH_DEGRADED_MIN = 80.0, 50.0
+
+
+def composite_health(deviation_pct, ml_class, hotspot_active: bool, max_temp_c: float,
+                     cool_pixels: int, cfg: SimConfig) -> dict:
+    """Panel Health Score, 0-100 (SIMULATED ESTIMATE - not a validated real-world measurement).
+
+        score = 100 - performance - hotspot - shading - soiling          (clamped to 0..100)
+        performance = min(60, |power deviation %|)           shortfall vs the digital twin's expectation
+        hotspot     = 0 if no hotspot else min(40, 20 + (max pixel temp - hotspot abs threshold))
+        shading     = min(15, 30 * cool_pixels / 64)         only when the class is Partial_Shading
+        soiling     = 5                                      only when the class is Soiling_Dusty
+    The power term already carries most of the soiling/shading loss; the shading/soiling terms are
+    small condition flags so a diagnosed fault is visible even before the shortfall is large.
+    Bands: >= 80 Healthy, 50-79 Degraded, < 50 Critical; an active hotspot is never reported as Healthy.
+    """
+    w = HEALTH_WEIGHTS
+    dev = None if deviation_pct is None or (isinstance(deviation_pct, float) and math.isnan(deviation_pct)) else deviation_pct
+    perf = 0.0 if dev is None else min(w["performance_cap"], abs(dev) * w["performance"])
+    hot = 0.0
+    if hotspot_active:
+        hot = min(w["hotspot_cap"], w["hotspot_base"] + max(0.0, max_temp_c - cfg.hotspot_abs_thresh_c) * w["hotspot_per_deg"])
+    shade = min(w["shading_cap"], w["shading_per_cool_fraction"] * cool_pixels / 64) if ml_class == "Partial_Shading" else 0.0
+    soil = w["soiling_flag"] if ml_class == "Soiling_Dusty" else 0.0
+    score = round(max(0.0, min(100.0, 100.0 - perf - hot - shade - soil)), 1)
+    if score < HEALTH_DEGRADED_MIN:
+        status = "Critical"
+    elif score < HEALTH_HEALTHY_MIN or hotspot_active:
+        status = "Degraded"
+    else:
+        status = "Healthy"
+    return {"score": score, "status": status, "simulated_estimate": True,
+            "penalties": {"power_deviation": round(perf, 1), "hotspot": round(hot, 1),
+                          "partial_shading": round(shade, 1), "soiling": round(soil, 1)},
+            "formula": "100 - power deviation (max 60) - hotspot (20 + °C over threshold, max 40) "
+                       "- shading (30 x cool-area fraction, max 15) - soiling flag (5)"}
+
+
 class SolarDigitalTwin:
     def __init__(self, config: SimConfig):
         self.config = config

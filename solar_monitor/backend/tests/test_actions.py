@@ -84,15 +84,85 @@ def test_tilt_moves_in_steps(tmp_path):
     run(go())
 
 
-def test_hotspot_scenarios_raise_alert_but_never_auto_actuate(tmp_path):
+def test_hotspot_alone_raises_alert_and_never_actuates(tmp_path):
     async def go():
-        for sid in ("hotspot", "soiled_hotspot", "shading_hotspot"):
-            e = await make_engine(tmp_path, sid)
-            await ticks(e, 6)
-            assert messages(e, TOPIC_COMMAND) == [], sid
-            assert any(ev["type"] == "HOTSPOT" and ev["level"] == "alert" for ev in e.events), sid
-            st = {s["id"]: s for s in e.stages()}
-            assert st["action"]["state"] == "alert" and st["hotspot"]["state"] == "alert"
+        e = await make_engine(tmp_path, "hotspot")
+        await ticks(e, 6)
+        assert messages(e, TOPIC_COMMAND) == []
+        assert any(ev["type"] == "HOTSPOT" and ev["level"] == "alert" for ev in e.events)
+        st = {s["id"]: s for s in e.stages()}
+        assert st["action"]["state"] == "alert" and st["hotspot"]["state"] == "alert"
+    run(go())
+
+
+def test_soiling_plus_hotspot_alerts_immediately_and_auto_cleans_once(tmp_path):
+    async def go():
+        e = await make_engine(tmp_path, "soiled_hotspot")
+        # alert is raised on the very first reading, before persistence allows cleaning
+        assert e.last_result["decision"]["recommended_action"] == "HOTSPOT_ALERT_WITH_SOILING"
+        assert any(ev["type"] == "HOTSPOT" and ev["level"] == "alert" for ev in e.events)
+        assert messages(e, TOPIC_COMMAND) == []
+        await ticks(e, 8)
+        cmds = messages(e, TOPIC_COMMAND)
+        assert [c["command"] for c in cmds] == ["START_CLEANING"] and cmds[0]["source"] == "decision_engine"
+        assert "COMPLETED" in states(e)
+        assert e.world.effective_soiling < 0.05                       # cleaning actually changed the simulated panel
+        assert e.last_verification["verdict"] == "RECOVERED"
+        # hotspot is NOT repaired by cleaning; class is no longer soiling, alert persists
+        r = e.last_result
+        assert r["thermal"]["hotspot_detected"] == "YES" and r["decision"]["recommended_action"] == "HOTSPOT_ALERT"
+        assert e.world.params.hotspot_enabled
+        assert not any("repair" in ev["message"].lower() for ev in e.events if ev["type"] in ("ACTION", "COMMAND"))
+    run(go())
+
+
+def test_soiling_plus_hotspot_keeps_ml_class_while_cleaning_is_queued(tmp_path):
+    async def go():
+        e = await make_engine(tmp_path, "soiled_hotspot", auto=False)
+        await ticks(e, 4)
+        d = e.last_result["decision"]
+        assert d["ml_class"] == "Soiling_Dusty" and d["final_status"] == "HOTSPOT_AND_SOILING"
+        assert d["auto_actions"] == ["START_CLEANING"]
+        assert messages(e, TOPIC_COMMAND) == []
+    run(go())
+
+
+def test_shading_plus_hotspot_auto_tilts_and_keeps_alert(tmp_path):
+    async def go():
+        e = await make_engine(tmp_path, "shading_hotspot")
+        await ticks(e, 6)
+        assert [c["command"] for c in messages(e, TOPIC_COMMAND)] == ["TILT_PANEL"]
+        assert e.last_result["thermal"]["hotspot_detected"] == "YES"
+    run(go())
+
+
+def test_soiling_plus_partial_shading_tilts_then_cleans(tmp_path):
+    async def go():
+        e = await make_engine(tmp_path, "soiled_shaded")
+        d = e.last_result["decision"]
+        assert d["ml_class"] == "Partial_Shading"                      # single-class ML is not rewritten
+        await ticks(e, 14)
+        cmds = [c["command"] for c in messages(e, TOPIC_COMMAND)]
+        assert cmds == ["TILT_PANEL", "START_CLEANING"], cmds
+        assert e.world.effective_soiling < 0.05 and e.world.effective_shading < 0.1
+        assert e.last_result["decision"]["final_status"] == "HEALTHY"
+        assert e.last_result["twin"]["health"]["status"] == "Healthy"
+        assert any("Combined condition" in ev["message"] for ev in e.events)
+    run(go())
+
+
+def test_health_score_tracks_conditions(tmp_path):
+    async def go():
+        scores = {}
+        for sid in ("healthy", "soiled", "shading", "hotspot", "soiled_shaded"):
+            e = await make_engine(tmp_path, sid, auto=False)
+            await ticks(e, 3)
+            scores[sid] = e.last_result["twin"]["health"]
+        assert scores["healthy"]["status"] == "Healthy" and scores["healthy"]["score"] > 90
+        assert scores["hotspot"]["status"] == "Degraded"
+        assert scores["soiled_shaded"]["score"] < scores["shading"]["score"] < scores["healthy"]["score"]
+        assert scores["soiled_shaded"]["status"] == "Critical"
+        assert scores["soiled"]["score"] < scores["healthy"]["score"]
     run(go())
 
 

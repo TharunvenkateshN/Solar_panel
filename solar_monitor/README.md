@@ -50,7 +50,7 @@ always available: quick **scenario switch**, **Run / Pause / Step / Reset**, the
 | Page | What it shows |
 |---|---|
 | Overview | Status banner, live 3D panel, pipeline rail, latest events, grouped live readings |
-| Scenarios & controls | The 8 scenarios, sliders for irradiance / temperature / soiling / shade / hotspot, what the pipeline derived |
+| Scenarios & controls | The 9 scenarios, sliders for irradiance / temperature / soiling / shade / hotspot, what the pipeline derived |
 | 3D panel & actions | Large 3D rig, manual cleaning / tilt, before-vs-after power and verification verdict |
 | Thermal & sensors | 8x8 thermal grid, hotspot rules, sensor readings, synthesised I-V curve, classifier features |
 | Workflow | All 8 pipeline stages in detail and the decision-rule table (current row highlighted) |
@@ -92,7 +92,8 @@ is reported as "already within limits - no recovery needed" rather than a fake r
 1. Pick a scenario (left, or in the top bar). Watch the status banner, readings, thermal grid and the 8-stage workflow.
 2. **Soiled / Dusty**: WAIT for 2 cycles -> `START_CLEANING` -> cleaning animation -> before/after power -> verification verdict.
 3. **Partial shading**: `TILT_PANEL` immediately (never cleaning) -> tilt animation -> before/after -> verdict.
-4. **Hotspot scenarios**: `HOTSPOT_ALERT[_WITH_...]` while the ML class stays visible. No automatic actuation.
+4. **Hotspot scenarios**: `HOTSPOT_ALERT[_WITH_...]` is raised at once while the ML class stays visible. The underlying cleaning / tilt still auto-executes (soiling + hotspot: cleaning once persistence is met); there is no automatic hotspot repair.
+   **Soiling + Partial Shading**: the single-class ML reports `Partial_Shading`; the decision engine flags concurrent soiling from the residual power shortfall, tilts first, then cleans.
 5. **Custom** (or move any slider in another scenario): irradiance, background temperature, soiling, shaded area,
    hotspot on/off, peak temperature, area (pixels), position. These change the simulated sensor data; the class,
    hotspot result and action are *derived*, not looked up.
@@ -118,7 +119,7 @@ backend/app/
   core/            ported from the notebook: sensors.py, thermal.py, hotspot.py, digital_twin.py, decision_engine.py
   ml/              base.py (adapter contract), simulated.py, joblib_model.py, loader.py, features.py
   world.py         the virtual panel (physical model + actuator effects)
-  scenarios.py     the 8 presets (physical parameters only)
+  scenarios.py     the 9 presets (physical parameters only)
   world_events.py  catalog + runner for the operator what-if events (weather, time of day, faults, rotate / clean)
   pipeline.py      one reading through the whole chain
   engine.py        wiring, persistence over time, auto-execution, verification, events
@@ -162,7 +163,7 @@ data. It is clearly labelled in the header, in the workflow and in each KPI, and
 python -m pytest -q
 ```
 
-129 tests: notebook components, all 8 scenarios through the real pipeline, thermal-control effects, cleaning and tilt
+129 tests: notebook components, all 9 scenarios through the real pipeline, thermal-control effects, cleaning and tilt
 workflows (success **and** failure), verification, classifier adapter (including a model trained on the pipeline's own features,
 corrupt / mismatched model files), message envelope, REST/WebSocket API, and real MQTT round-trips against an embedded
 broker (`amqtt`, test-only; those two tests skip if it is not installed). The tests assert expected values - there are no hard-coded "PASSED" flags.
@@ -197,7 +198,8 @@ broker (`amqtt`, test-only; those two tests skip if it is not installed). The te
 * Documented extensions to the notebook decision engine (rules unchanged): `base_action`/`base_status` are returned next to the hotspot
   overlay; a hotspot alert is still raised if the ML class is unavailable; NaN deviations and a deviation of exactly 0 are handled.
   The notebook's persistence counter lived in a twin recreated on every call; here one stateful twin persists across cycles.
-* A hotspot alert suppresses the automatic cleaning/tilt (notebook behaviour). The operator can still run either manually.
+* A hotspot alert no longer suppresses the underlying automatic cleaning/tilt (changed from the notebook); hotspot repair is manual and simulated.
+* **Panel Health Score** (Overview) = 100 - power deviation (max 60) - hotspot (20 + degC over threshold, max 40) - shading (30 x cool-area fraction, max 15) - soiling flag (5). Bands: >=80 Healthy, 50-79 Degraded, <50 Critical. A simulated estimate, not a validated measurement.
 * The simulated classifier is a stand-in; its outputs say nothing about the real model's accuracy. The notebook reports 3-class LOO accuracy
   of 0.29 on 7 samples - not a validated performance figure.
 * The Wokwi tilting project is **not** part of this website and is not connected.

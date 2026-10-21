@@ -13,6 +13,7 @@ EXPECTED = {
     "hotspot": ("Healthy_Clean", "YES", "HOTSPOT_DETECTED", "HOTSPOT_ALERT"),
     "soiled_hotspot": ("Soiling_Dusty", "YES", "HOTSPOT_AND_SOILING", "HOTSPOT_ALERT_WITH_SOILING"),
     "shading_hotspot": ("Partial_Shading", "YES", "HOTSPOT_AND_PARTIAL_SHADING", "HOTSPOT_ALERT_WITH_PARTIAL_SHADING"),
+    "soiled_shaded": ("Partial_Shading", "NO", "PARTIAL_SHADING_AND_SOILING", "TILT_PANEL"),
     "post_cleaning": ("Healthy_Clean", "NO", "HEALTHY", "NO_ACTION"),
     "custom": ("Healthy_Clean", "NO", "HEALTHY", "NO_ACTION"),
 }
@@ -20,7 +21,7 @@ EXPECTED = {
 
 def test_every_scenario_has_an_expectation():
     assert set(EXPECTED) == set(SCENARIOS)
-    assert len(SCENARIOS) == 8
+    assert len(SCENARIOS) == 9
 
 
 @pytest.mark.parametrize("sid", list(EXPECTED))
@@ -101,7 +102,10 @@ def test_energy_and_power_values_are_physically_consistent(tmp_path):
         el = r["electrical"]
         assert el["power_W"] == pytest.approx(el["voltage_V"] * el["current_A"], rel=2e-3)
         assert r["twin"]["power_expected_W"] > el["power_W"]
-        assert r["twin"]["health_score_pct"] == pytest.approx(100 - r["twin"]["deviation_pct"], abs=0.02)
+        h = r["twin"]["health"]
+        assert r["twin"]["health_score_pct"] == h["score"]
+        assert h["score"] == pytest.approx(100 - sum(h["penalties"].values()), abs=0.2)
+        assert h["score"] < 100 - r["twin"]["deviation_pct"] + 0.02   # soiling flag only ever lowers it
         assert r["twin"]["irradiance_source"] == "lux_derived_UNCALIBRATED"
     run(go())
 

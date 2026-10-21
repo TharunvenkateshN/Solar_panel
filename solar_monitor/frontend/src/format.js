@@ -16,8 +16,9 @@ export const STATUS = {
   SOILING_DETECTED: { label: 'Soiling condition', tone: 'warn', note: 'Soiling detected; waiting for the degradation to persist.' },
   CLEANING_REQUIRED: { label: 'Soiling - cleaning required', tone: 'warn', note: 'Soiling confirmed over the required number of cycles.' },
   PARTIAL_SHADING: { label: 'Partial shading', tone: 'info', note: 'Tilting / orientation correction requested.' },
+  PARTIAL_SHADING_AND_SOILING: { label: 'Partial shading + soiling', tone: 'warn', note: 'ML class: partial shading. Extra power loss indicates soiling too - tilt first, then clean.' },
   HOTSPOT_DETECTED: { label: 'Hotspot alert', tone: 'alert', note: 'Thermal hotspot on an otherwise healthy classification.' },
-  HOTSPOT_AND_SOILING: { label: 'Hotspot alert + soiling', tone: 'alert', note: 'Underlying classification preserved: soiling.' },
+  HOTSPOT_AND_SOILING: { label: 'Hotspot alert + soiling', tone: 'alert', note: 'Hotspot safety alert raised. ML class stays soiling; automatic cleaning runs when persistence is met (hotspot repair is manual).' },
   HOTSPOT_AND_PARTIAL_SHADING: { label: 'Hotspot alert + partial shading', tone: 'alert', note: 'Underlying classification preserved: partial shading.' },
   MODEL_UNAVAILABLE: { label: 'Classifier unavailable', tone: 'muted', note: 'No valid ML class could be produced.' },
 }

@@ -13,7 +13,7 @@ import numpy as np
 
 from .config import SimConfig
 from .core.decision_engine import DecisionEngine
-from .core.digital_twin import SolarDigitalTwin
+from .core.digital_twin import SolarDigitalTwin, composite_health
 from .core.hotspot import HotspotDetector
 from .ml.base import ConditionClassifier
 from .ml.features import build_feature_bundle
@@ -74,8 +74,16 @@ class Pipeline:
         twin = self.twin.update(V, I, lux, panel_temp, ml_class, hs["hotspot_detected"],
                                 irradiance_Wm2=None, use_lux_for_irr=True)
 
-        # 6. decision engine
-        dec = self.engine.decide(ml_class, hs["hotspot_detected"], twin["deviation_pct"], twin["persistent_degrad"])
+        # 5b. composite health score (replaces the deviation-only indicator; documented in composite_health)
+        cool = features["derived"]["cool_pixel_count"]
+        health = composite_health(twin["deviation_pct"], ml_class, hs["hotspot_detected"] == "YES",
+                                  hs["max_temp_C"], cool, cfg)
+        twin["health_score_pct"], twin["health"] = health["score"], health
+
+        # 6. decision engine (shading_loss_est: power loss the visible cool area can explain -> detects soiling on top)
+        shade_est = 100 * min(0.95, cfg.shading_loss_per_fraction * cool / 64)
+        dec = self.engine.decide(ml_class, hs["hotspot_detected"], twin["deviation_pct"], twin["persistent_degrad"],
+                                 shading_loss_est_pct=shade_est)
 
         thermal = {**hs, "grid": grid.round(2).tolist()}
         result = {

@@ -113,7 +113,7 @@ class SimulationEngine:
         self._suppressed_logged: set[str] = set()
         self.action_state = {"phase": "idle", "action": None, "progress": 0, "angle_deg": None,
                              "command_id": None, "source": None, "message": ""}
-        self.prev = {"class": None, "hotspot": None, "action": None}
+        self.prev = {"class": None, "hotspot": None, "action": None, "secondary": None}
         self._epoch_tick = self.tick_no + 1  # first tick of the current physical situation ("before" baseline)
 
     def _truth(self) -> dict:
@@ -212,21 +212,36 @@ class SimulationEngine:
         # publish the combined state (ML class and hotspot kept separate and preserved)
         self.bus.publish(TOPIC_STATUS, envelope("status", seq, sim_time, self._status_body(r)))
 
-        # auto-execute corrective actions
-        action = dec["recommended_action"]
-        if self.config.auto_execute and action in SUPPORTED_DECISIONS:
-            cmd = SUPPORTED_DECISIONS[action]
-            if self.inflight or self.pending_verification:
-                pass
-            elif cmd in self.failed_actions:
-                if cmd not in self._suppressed_logged:
-                    self._suppressed_logged.add(cmd)
-                    self._event("DECISION", f"{ACTION_LABEL[cmd]} auto-retry suppressed after failed verification - operator inspection required.", "warn")
-            else:
+        # auto-execute corrective actions (a hotspot alert does NOT withhold the underlying cleaning / tilt)
+        if self.config.auto_execute and not (self.inflight or self.pending_verification):
+            cmd, suppressed = self._pick_command(r)
+            if cmd:
                 self.send_command(cmd, "decision_engine", dec["reason"])
+            elif suppressed and suppressed not in self._suppressed_logged:
+                self._suppressed_logged.add(suppressed)
+                self._event("DECISION", f"{ACTION_LABEL[suppressed]} auto-retry suppressed after failed verification - operator inspection required.", "warn")
 
         self._broadcast({"type": "tick", "result": self._ui_result(r), "history_point": point,
                          "truth": self._truth(), "sim": self.sim_state()})
+
+    def _pick_command(self, r: dict) -> tuple[str | None, str | None]:
+        """Next actuator command the decision engine wants: (command, suppressed_command).
+
+        Walks the engine's ordered `auto_actions` (e.g. tilt, then clean for combined shading + soiling).
+        Commands whose previous verification failed are suppressed; a tilt is skipped once the servo is
+        already at the target angle. Duplicates are prevented by the in-flight / pending-verification guard
+        and because the condition (and thus the recommendation) disappears once the action has worked.
+        """
+        suppressed = None
+        for action in r["decision"].get("auto_actions", []):
+            cmd = SUPPORTED_DECISIONS[action]
+            if cmd in self.failed_actions:
+                suppressed = suppressed or cmd
+            elif cmd == TILT and self.world.tilt_angle_deg >= self.config.tilt_target_angle_deg - 1e-6:
+                continue   # servo already at its limit: another tilt cannot recover anything
+            else:
+                return cmd, None
+        return None, suppressed
 
     def _status_body(self, r: dict) -> dict:
         tw, dec, th, ml = r["twin"], r["decision"], r["thermal"], r["ml"]
@@ -243,6 +258,7 @@ class SimulationEngine:
             "persistent_degrad": tw["persistent_degrad"], "persist_count": tw["persist_count"],
             "final_status": dec["final_status"], "recommended_action": dec["recommended_action"],
             "underlying_action": dec["base_action"], "reason": dec["reason"],
+            "secondary_condition": dec.get("secondary_condition"), "health": tw.get("health"),
             "tilt_angle_deg": tw["tilt_angle_deg"], "cleaning_active": tw["cleaning_state"],
         }
 
@@ -271,7 +287,11 @@ class SimulationEngine:
                 self._event("DECISION", f"Decision: {act} (underlying action: {dec['base_action']}).", "alert")
             else:
                 self._event("DECISION", f"Decision: {act} - {dec['reason']}", "warn")
-        p["class"], p["hotspot"], p["action"] = cls, hs, act
+        sec = dec.get("secondary_condition")
+        if sec != p.get("secondary") and sec:
+            self._event("CONDITION", "Combined condition: partial shading (ML class) with concurrent soiling inferred from the power "
+                        "shortfall. Tilt first, then clean. The ML class is unchanged.", "warn")
+        p["class"], p["hotspot"], p["action"], p["secondary"] = cls, hs, act, sec
 
     # ------------------------------------------------------------------ commands / feedback
     def send_command(self, action: str, source: str, reason: str = "",
@@ -290,6 +310,7 @@ class SimulationEngine:
         self._cmd_id += 1
         cid = f"cmd-{self._cmd_id}"
         pre = self._pre_snapshot()
+        pre["combined"] = bool(self.last_result and self.last_result["decision"].get("secondary_condition"))
         self.inflight = {"command_id": cid, "action": action, "t0": time.monotonic(), "pre": pre, "source": source}
         self.action_state = {"phase": "commanded", "action": action, "progress": 0, "angle_deg": self.world.tilt_angle_deg,
                              "command_id": cid, "source": source, "message": "Command published"}
@@ -362,8 +383,12 @@ class SimulationEngine:
                 "deviation": round(avg("deviation"), 2) if any(x["deviation"] is not None for x in rs) else None,
                 "health": round(avg("health"), 2) if any(x["health"] is not None for x in rs) else None}
         pre, thr = pv["pre"], self.config.verification_dev_thresh_pct
+        combined_tilt = pv["action"] == TILT and pre.get("combined")
+        gain_pct_now = None if not pre.get("power") else 100 * (post["power"] - pre["power"]) / pre["power"]
         if post["deviation"] is None:
             verdict = "INCONCLUSIVE"
+        elif combined_tilt and gain_pct_now is not None and gain_pct_now >= thr:
+            verdict = "RECOVERED"      # shading part recovered; the residual (soiling) is handled by the queued cleaning
         elif abs(post["deviation"]) >= thr:
             verdict = "NOT_RECOVERED"
         elif pre.get("deviation") is not None and abs(pre["deviation"]) < thr:
@@ -385,6 +410,10 @@ class SimulationEngine:
             self.failed_actions.discard(pv["action"])
             self._event("VERIFY", f"{ACTION_LABEL[pv['action']]} verification: performance was already within limits "
                         f"(deviation {pre.get('deviation')}% -> {post['deviation']}%) - no recovery to confirm.", "info")
+        elif verdict == "RECOVERED" and combined_tilt and abs(post["deviation"]) >= thr:
+            self.failed_actions.discard(pv["action"])
+            self._event("VERIFY", f"Tilt verification: shading component recovered (power {pre.get('power')} W -> {post['power']} W, "
+                        f"deviation {pre.get('deviation')}% -> {post['deviation']}%); residual shortfall attributed to soiling - cleaning follows. Simulated.", "success")
         elif verdict == "RECOVERED":
             self.failed_actions.discard(pv["action"])
             self._event("VERIFY", f"{ACTION_LABEL[pv['action']]} verification PASSED: deviation {pre.get('deviation')}% -> {post['deviation']}% "
@@ -413,18 +442,21 @@ class SimulationEngine:
             s7 = {"state": "done", "headline": f"{label} completed (simulated)", "details": {"Command": a.get("command_id"), "Note": a.get("message")}}
         elif a["phase"] in ("rejected", "timeout"):
             s7 = {"state": "error", "headline": f"{label} {a['phase']}", "details": {"Note": a.get("message")}}
-        elif act.startswith("HOTSPOT"):
-            s7 = {"state": "alert", "headline": "Hotspot alert raised", "details": {"Underlying": d["base_action"], "Auto-action": "none (alert only)"}}
         elif act == "NO_ACTION":
             s7 = {"state": "done", "headline": "No intervention", "details": {}}
         elif act == "WAIT":
             s7 = {"state": "pending", "headline": "Waiting for persistence",
                   "details": {"Persistence": f"{r['twin']['persist_count']}/{cfg.persist_cycles}"}}
-        elif act in SUPPORTED_DECISIONS and SUPPORTED_DECISIONS[act] in self.failed_actions:
-            s7 = {"state": "error", "headline": "Auto-retry suppressed", "details": {"Reason": "previous verification failed"}}
-        elif act in SUPPORTED_DECISIONS:
-            s7 = {"state": "pending", "headline": "Awaiting command" if cfg.auto_execute else "Awaiting operator",
-                  "details": {"Auto-execute": "on" if cfg.auto_execute else "off"}}
+        elif d.get("auto_actions"):
+            cmd, suppressed = self._pick_command(r)
+            if cmd is None and suppressed:
+                s7 = {"state": "error", "headline": "Auto-retry suppressed", "details": {"Reason": "previous verification failed"}}
+            else:
+                s7 = {"state": "pending", "headline": "Awaiting command" if cfg.auto_execute else "Awaiting operator",
+                      "details": {"Auto-execute": "on" if cfg.auto_execute else "off",
+                                  **({"Hotspot": "alert raised; repair is a separate manual action"} if act.startswith("HOTSPOT") else {})}}
+        elif act.startswith("HOTSPOT"):
+            s7 = {"state": "alert", "headline": "Hotspot alert raised", "details": {"Underlying": d["base_action"], "Auto-action": "none (alert only)"}}
         else:
             s7 = {"state": "error", "headline": act, "details": {}}
         s7.update(id="action", title="Corrective action")

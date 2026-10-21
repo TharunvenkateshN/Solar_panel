@@ -19,7 +19,7 @@ def client(tmp_path):
 
 def test_state_endpoint_describes_the_whole_system(client):
     s = client.get("/api/state").json()
-    assert len(s["scenarios"]) == 8 and s["scenario_id"] == "healthy"
+    assert len(s["scenarios"]) == 9 and s["scenario_id"] == "healthy"
     assert s["classifier"]["mode"] == "simulated" and s["mqtt"]["mode"] == "local_simulation"
     assert s["config"]["persist_cycles"] == 3 and s["config"]["soiling_dev_thresh_pct"] == 10.0
 

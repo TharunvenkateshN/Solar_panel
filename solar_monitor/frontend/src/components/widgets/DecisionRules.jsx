@@ -3,7 +3,7 @@ const RULES = [
   { cls: 'Soiling_Dusty', hs: 'NO', cond: 'below threshold or not persistent', action: 'WAIT', result: 'Wait and keep monitoring', match: (d) => d.base_action === 'WAIT' },
   { cls: 'Soiling_Dusty', hs: 'NO', cond: '≥ threshold and persistent', action: 'START_CLEANING', result: 'Start cleaning', match: (d) => d.base_action === 'START_CLEANING' },
   { cls: 'Partial_Shading', hs: 'NO', cond: 'any', action: 'TILT_PANEL', result: 'Request tilt (never cleaning)', match: (d) => d.base_action === 'TILT_PANEL' },
-  { cls: 'any class', hs: 'YES', cond: 'any', action: 'HOTSPOT_ALERT…', result: 'Hotspot alert, underlying class preserved', match: (d) => d.recommended_action.startsWith('HOTSPOT') },
+  { cls: 'any class', hs: 'YES', cond: 'any', action: 'HOTSPOT_ALERT…', result: 'Hotspot alert + underlying action (cleaning / tilt) still auto-executed', match: (d) => d.recommended_action.startsWith('HOTSPOT') },
 ]
 
 export default function DecisionRules({ s }) {
@@ -24,7 +24,7 @@ export default function DecisionRules({ s }) {
           })}
         </tbody>
       </table>
-      <p className="hint">Thresholds (deviation %, number of cycles) are configurable in Settings. A hotspot alert suppresses the automatic cleaning / tilt; the operator can still run either manually.</p>
+      <p className="hint">Thresholds (deviation %, number of cycles) are configurable in Settings. A hotspot alert is raised in addition to the underlying action: automatic cleaning / tilt still runs, hotspot repair stays a manual simulated action. When shading shows a power shortfall larger than the shaded area explains, soiling is flagged as well and cleaning follows the tilt.</p>
     </div>
   )
 }

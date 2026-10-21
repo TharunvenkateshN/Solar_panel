@@ -1,5 +1,6 @@
 import { Card, PageHeader, Pill } from '../ui/Card.jsx'
 import StatusBanner from '../widgets/StatusBanner.jsx'
+import HealthScore from '../widgets/HealthScore.jsx'
 import KpiGrid from '../widgets/KpiGrid.jsx'
 import PanelViewer from '../widgets/PanelViewer.jsx'
 import Workflow, { StageRail } from '../widgets/Workflow.jsx'
@@ -25,9 +26,12 @@ export function OverviewView({ s, go }) {
         <Card title="Live 3D panel" sim id="ov-3d" className="fill" actions={<button className="btn small" onClick={() => go('panel')}>Open full view</button>}>
           <PanelViewer s={s} size="fill" />
         </Card>
-        <Card title="Try an action" sim id="ov-actions">
-          <ActionCenter s={s} compact onMore={() => go('panel')} />
-        </Card>
+        <div className="stack">
+          <Card title="Panel Health Score" sim id="ov-health"><HealthScore s={s} /></Card>
+          <Card title="Try an action" sim id="ov-actions">
+            <ActionCenter s={s} compact onMore={() => go('panel')} />
+          </Card>
+        </div>
       </div>
       <div className="grid two">
         <Card title="Pipeline" sim id="ov-rail" actions={<button className="btn small" onClick={() => go('workflow')}>Details</button>}>
@@ -205,7 +209,7 @@ const ROWS = [
   ['Feature preparation', 'Implemented', '19-feature I-V schema; the I-V curve is synthesised from the operating point.'],
   ['ML classifier', 'Simulated', 'Rule-based stand-in. Copy the trained .joblib into backend/models and reload from Settings.'],
   ['Hotspot detector', 'Implemented', 'Notebook rules, independent of the ML class.'],
-  ['Expected power / digital twin', 'Implemented', 'Notebook model; health and energy loss are provisional.'],
+  ['Expected power / digital twin', 'Implemented', 'Notebook model; the composite Panel Health Score and energy loss are simulated estimates.'],
   ['Decision engine', 'Implemented', 'Notebook rules plus persistence; thresholds configurable.'],
   ['Cleaning & tilting', 'Simulated', 'Software actuators with explicit recovery assumptions. No motor is controlled.'],
   ['3D view', 'Simulated', 'Visualises the simulator state (tilt, dust, shade, thermal). Not a physical measurement.'],
@@ -235,7 +239,7 @@ export function AboutView({ s }) {
           <li>Every sensor reading, the I-V curve, the cleaning / tilt recovery and the history are <strong>simulated</strong>.</li>
           <li>Thresholds (10 % deviation, 3 cycles, hotspot 65 °C / 15 °C / 2 px) are the notebook's <strong>provisional</strong> values.</li>
           <li>The classifier is a stand-in until the trained model files are added; it reports no confidence. The notebook's 3-class model used only 7 samples, so its accuracy must not be cited as validated.</li>
-          <li>A hotspot alert never erases the ML class and suppresses automatic cleaning / tilting; the operator can still run either manually.</li>
+          <li>A hotspot alert never erases the ML class. The underlying cleaning / tilt still runs automatically; the hotspot itself is only alerted (repair is a manual, simulated action).</li>
           <li>Recovery after cleaning or tilting is a simulation assumption, not a physical experiment. Verification can fail and then says so.</li>
         </ul>
       </Card>

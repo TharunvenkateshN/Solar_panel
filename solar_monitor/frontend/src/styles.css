@@ -337,3 +337,18 @@ fieldset:disabled { opacity: .5; }
 .viewer.h-fill { height: auto; min-height: 460px; }
 @media (max-width: 1180px) { .viewer.h-fill { height: 420px; flex: none; } }
 @media (max-width: 640px) { .viewer.h-fill { height: 340px; } }
+
+/* Panel Health Score card */
+.health { display: grid; gap: 10px; }
+.health-top { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.health-score { display: flex; align-items: baseline; gap: 2px; }
+.health-num { font-size: 46px; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+.health-score small { font-size: 20px; color: var(--muted); font-weight: 600; }
+.health.ok .health-num { color: var(--ok); } .health.warn .health-num { color: var(--warn); } .health.alert .health-num { color: var(--alert); }
+.health-bar { height: 10px; border-radius: 6px; background: var(--border); overflow: hidden; }
+.health-bar i { display: block; height: 100%; border-radius: 6px; transition: width .4s; background: var(--muted); }
+.health.ok .health-bar i { background: var(--ok); } .health.warn .health-bar i { background: #d99a00; } .health.alert .health-bar i { background: var(--alert); }
+.health-parts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 14px; margin: 0; }
+.health-parts > div { display: flex; justify-content: space-between; font-size: 12.5px; color: var(--muted); }
+.health-parts > div.on { color: var(--text); font-weight: 600; }
+.health-parts dd { margin: 0; font-variant-numeric: tabular-nums; }
